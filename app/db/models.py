@@ -6,29 +6,33 @@ from sqlalchemy import (Column,
                         Float,
                         Boolean,
                         Table,
-                        Date)
+                        Date,
+                        DateTime,
+                        func,
+                        Enum)
 from sqlalchemy.orm import relationship
 from app.db.base import Base
+from app.enums import AttendanceEnum
 
 teacher_group_association = Table(
     "teacher_group_association",
     Base.metadata,
-    Column("teachers_id", ForeignKey("teachers.id"), primary_key=True),
-    Column("groups_id", ForeignKey("groups.id"), primary_key=True)
+    Column("teachers_id", ForeignKey("teachers.id", ondelete="CASCADE"), primary_key=True),
+    Column("groups_id", ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True)
 )
 
 student_group_association = Table(
     "student_group_association",
     Base.metadata,
-    Column("students_id", ForeignKey("students.id"), primary_key=True),
-    Column("groups_id", ForeignKey("groups.id"), primary_key=True)
+    Column("students_id", ForeignKey("students.id", ondelete="CASCADE"), primary_key=True),
+    Column("groups_id", ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True)
 )
 
 teacher_students_association = Table(
     "teacher_students_association",
     Base.metadata,
-    Column("teachers_id", ForeignKey("teachers.id"), primary_key=True),
-    Column("students_id", ForeignKey("students.id"), primary_key=True)
+    Column("teachers_id", ForeignKey("teachers.id", ondelete="CASCADE"), primary_key=True),
+    Column("students_id", ForeignKey("students.id", ondelete="CASCADE"), primary_key=True)
 )
 
 
@@ -36,64 +40,81 @@ class Teachers(Base):
     __tablename__ = "teachers"
 
     id = Column(Integer, primary_key=True)
-    teacher_firstname = Column(String)
-    teacher_lastname = Column(String)
-    teacher_phone_number = Column(String)
-    teacher_subject = Column(String)
+    teacher_firstname = Column(String, nullable=False)
+    teacher_lastname = Column(String, nullable=False)
+    teacher_phone_number = Column(String, nullable=False)
 
-    teacher_groups = relationship("Groups",
-                                  secondary=teacher_group_association,
-                                  back_populates="group_teachers")  # Ustoz uchun biriktirilgan guruhlar
+    teacher_subject_id = Column(Integer, ForeignKey("subjects.id"), nullable=True)
+    teacher_subject = relationship("Subjects", back_populates="subject_teacher")
 
-    teacher_students = relationship("Students",
-                                    secondary=teacher_students_association,
-                                    back_populates="teachers")  # Ustoz uchun biriktirilgan studentlar
+    attendance = relationship("Attendance",back_populates="teacher")
+    teacher_groups = relationship("Groups", secondary=teacher_group_association, back_populates="group_teachers")  # Ustoz uchun biriktirilgan guruhlar
+    teacher_students = relationship("Students", secondary=teacher_students_association, back_populates="student_teachers")  # Ustoz uchun biriktirilgan studentlar
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())  # Avtomatik kiritish vaqtini saqlash
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(),
+                        onupdate=func.now())  # Yangilangan vaqtini avtomatik saqlash
 
 
 class Students(Base):
     __tablename__ = "students"
 
     id = Column(Integer, primary_key=True)
-    student_firstname = Column(String)
-    student_lastname = Column(String)
-    student_phone_number = Column(String)
+    student_firstname = Column(String, nullable=False)
+    student_lastname = Column(String, nullable=False)
+    student_phone_number = Column(String, nullable=False)
+    student_parents_fullname = Column(String, nullable=False)
+    student_parents_phone_number = Column(String, nullable=False)
+    student_additional_info = Column(Text)
 
     student_groups = relationship("Groups", secondary=student_group_association, back_populates="group_students")
-
-    student_additional_info = Column(Text)
     student_attendance = relationship("Attendance", back_populates="student", passive_deletes=True)
-    student_payment = relationship("Payments", back_populates="student")
-    student_parents_fullname = Column(String)
-    student_parents_phone_number = Column(String)
+    student_payment = relationship("Payments", back_populates="student", passive_deletes=True)
+    student_teachers = relationship("Teachers", secondary=teacher_students_association, back_populates="teacher_students")
 
-    teachers = relationship("Teachers", secondary=teacher_students_association, back_populates="students")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())  # Avtomatik kiritish vaqtini saqlash
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(),
+                        onupdate=func.now())  # Yangilangan vaqtini avtomatik saqlash
 
 
 class Groups(Base):
     __tablename__ = "groups"
 
     id = Column(Integer, primary_key=True)
-    group_name = Column(String)
-    lesson_time = Column(String)
-    lesson_days = Column(String)
-    group_subject = Column(String)
-    attendance = relationship("Attendance", back_populates="group", passive_deletes=True)
+    group_name = Column(String, nullable=False)
+    lesson_time = Column(String, nullable=False)
+    lesson_days = Column(String, nullable=False)
 
+    group_subject_id = Column(Integer, ForeignKey("subjects.id"), nullable=False)
+    group_subject = relationship("Subjects", back_populates="subject_group")
+
+    attendance = relationship("Attendance", back_populates="group", passive_deletes=True)
     # Guruh ustozi
     group_teachers = relationship("Teachers", secondary=teacher_group_association, back_populates="teacher_groups")
-
     # Guruh talabalari
     group_students = relationship("Students", secondary=student_group_association, back_populates="student_groups")
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())  # Avtomatik kiritish vaqtini saqlash
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(),
+                        onupdate=func.now())  # Yangilangan vaqtini avtomatik saqlash
 
 
 class Payments(Base):
     __tablename__ = "payments"
 
     id = Column(Integer, primary_key=True)
-    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"))
+
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
     student = relationship("Students", back_populates="student_payment", passive_deletes=True)
-    payment_date = Column(Date)
-    payment_amount = Column(Float)
+
+
+
+    payment_date = Column(Date, nullable=False)
+    payment_amount = Column(Float, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())  # Avtomatik kiritish vaqtini saqlash
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(),
+                        onupdate=func.now())  # Yangilangan vaqtini avtomatik saqlash
 
 
 class Attendance(Base):
@@ -101,11 +122,36 @@ class Attendance(Base):
 
     id = Column(Integer, primary_key=True)
 
+    teacher_id = Column(Integer, ForeignKey("teachers.id", ondelete="CASCADE"))
+    teacher = relationship("Teachers", back_populates="attendance")
+
     student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"))
     student = relationship("Students", back_populates="student_attendance", passive_deletes=True)
 
     group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"))
     group = relationship("Groups", back_populates="attendance", passive_deletes=True)
 
+    subject_id = Column(Integer, ForeignKey("subjects.id", ondelete="CASCADE"))
+    subject = relationship("Subjects", back_populates="attendance")
+
     attendance_date = Column(Date)
-    is_present = Column(Boolean)
+    status =Column(Enum(AttendanceEnum), default=AttendanceEnum.ABSENT.value)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())  # Avtomatik kiritish vaqtini saqlash
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(),
+                        onupdate=func.now())  # Yangilangan vaqtini avtomatik saqlash
+
+
+class Subjects(Base):
+    __tablename__ = "subjects"
+
+    id = Column(Integer, primary_key=True)
+    subject_name = Column(String, nullable=False)
+
+    subject_teacher = relationship("Teachers", back_populates="teacher_subject")
+    attendance = relationship("Attendance", back_populates="subject")
+    subject_group = relationship("Groups", back_populates="group_subject")
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())  # Avtomatik kiritish vaqtini saqlash
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(),
+                        onupdate=func.now())  # Yangilangan vaqtini avtomatik saqlash
