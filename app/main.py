@@ -1,11 +1,19 @@
 from fastapi import FastAPI, Request
 from app.api.v1.routers_teachers import teacher_router as teacher
-from app.api.v1.routers_students import student_routers as student
+from app.api.v1.routers_students import student_router as student
+from app.api.v1.routers_groups import groups_router as group
+from app.api.v1.routers_attendance import attendance_router as attendance
+from app.api.v1.routers_payments import payment_router as payment
+from app.api.v1.routers_subjects import subject_router as subject
 app = FastAPI(title="My Project API", version="1.0")
 
 routers = [
+    (subject, "Subject"),
+    (group, "Groups"),
     (teacher, "Teachers"),
-    (student, "Students")
+    (student, "Students"),
+    (attendance, "Attendance"),
+    (payment, "Payment")
 ]
 
 for router, tag in routers:
