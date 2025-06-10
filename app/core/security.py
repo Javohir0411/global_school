@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 import logging
 import os
 from sqlalchemy.orm import Session
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -40,11 +41,8 @@ def create_access_token(data: dict, expire_delta: timedelta):
     to_encode.update({"exp": expire})
 
     to_encode.update({"user_id": data.get("user_id"), "is_registered": True})
-
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
-
-
 
 def verify_token(token: str, db: Session):
     print(f"Token turi: {type(token)}")  # Tokenning turini chiqaramiz
@@ -71,7 +69,7 @@ def verify_token(token: str, db: Session):
         raise HTTPException(status_code=401, detail="Noto'g'ri token")
 
 
-def create_refresh_token(data: dict, expire_delta: timedelta = timedelta(days=30)):
+def create_refresh_token(data: dict, expire_delta: timedelta = timedelta(30)):
     to_encode = data.copy()
     expire = datetime.now() + expire_delta
     to_encode.update({"exp": expire})

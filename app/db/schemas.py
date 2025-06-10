@@ -2,7 +2,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 from datetime import datetime, date
-from app.enums import AttendanceEnum
+from app.enums import AttendanceEnum, RoleEnum
 
 
 # Modellar va ForwardRef (agar kerak bo'lsa)
@@ -16,6 +16,7 @@ class TeacherBase(BaseModel, _Config):
     teacher_firstname: str
     teacher_lastname: str
     teacher_phone_number: str
+    teacher_email: Optional[str]
     teacher_subject_id: Optional[int]
     teacher_groups: Optional[List["GroupBase"]] = None
     teacher_students: Optional[List["StudentBase"]] = None
@@ -27,6 +28,8 @@ class TeacherGroupInfo(BaseModel):  # GroupDetail uchun
     teacher_lastname: str
     teacher_phone_number: str
 
+    class Config:
+        from_attributes = True
 
 class TeacherSubject(BaseModel):  # crud.py: get_subject funksiyasi uchun
     id: int
@@ -47,6 +50,7 @@ class TeacherCreate(BaseModel):
     teacher_firstname: str
     teacher_lastname: str
     teacher_phone_number: str
+    teacher_email: Optional[str]
     teacher_subject_id: Optional[int] = None
     teacher_groups: Optional[List[int]] = []
     teacher_students: Optional[List[int]] = []
@@ -56,6 +60,7 @@ class TeacherUpdate(BaseModel):
     teacher_firstname: Optional[str] = None
     teacher_lastname: Optional[str] = None
     teacher_phone_number: Optional[str] = None
+    teacher_email: Optional[str] = None
     teacher_subject_id: Optional[int] = None
     teacher_groups: Optional[List[int]] = []
     teacher_students: Optional[List[int]] = []
@@ -68,6 +73,10 @@ class TeacherDetail(TeacherBase):
     attendance: Optional[List["AttendanceBase"]] = []  # ForwardRef ishlatish
 
 
+class TeacherUnassignRequest(BaseModel):
+    teacher_ids: List[int]
+
+
 # Subject model
 class SubjectBase(BaseModel, _Config):
     id: int
@@ -75,6 +84,11 @@ class SubjectBase(BaseModel, _Config):
 
 
 class SubjectCreate(BaseModel):
+    subject_name: str
+
+
+class SubjectOutput(BaseModel):
+    id: int
     subject_name: str
 
 
@@ -110,15 +124,16 @@ class StudentInfo(StudentBase):
     class Config:
         model_config = ConfigDict(from_attributes=True)
 
+
 class StudentPaymentInfo(BaseModel):
     id: int
     student_firstname: str
     student_lastname: str
     student_groups: List[GroupOutput]
 
-
     class Config:
         model_config = ConfigDict(from_attributes=True)
+
 
 class StudentCreate(BaseModel, _Config):
     student_firstname: str
@@ -154,6 +169,17 @@ class StudentGroupInfo(BaseModel):  # GroupDetail uchun crud.py get_students uch
     student_firstname: str
     student_lastname: str
 
+    class Config:
+        from_attributes = True
+
+
+class StudentAttendance(BaseModel):  # crud.py get_attendances uchun ham
+    student_firstname: str
+    student_lastname: str
+
+    class Config:
+        from_attributes = True
+
 
 # Group model
 class GroupBase(BaseModel, _Config):
@@ -170,6 +196,9 @@ class GroupBase(BaseModel, _Config):
 class GroupOutput(BaseModel):  # crud.py get_teacher funksiyasi uchun
     id: int
     group_name: str
+
+    class Config:
+        from_attributes = True
 
 
 class GroupCreate(BaseModel):
@@ -215,6 +244,7 @@ class PaymentCreate(BaseModel):
     payment_date: date
     payment_amount: float
 
+
 class PaymentsOutput(BaseModel):
     id: int
     student: StudentGroupInfo
@@ -243,13 +273,15 @@ class AttendanceBase(BaseModel, _Config):
     status: AttendanceEnum
 
 
+class AttendanceInputItem(BaseModel):
+    student_id: int
+    status: AttendanceEnum = AttendanceEnum.absent
+
+
 class AttendanceCreate(BaseModel):
     teacher_id: int
-    student_id: int
     group_id: int
-    subject_id: int
-    attendance_date: date
-    status: AttendanceEnum = AttendanceEnum.ABSENT
+    attendance: List[AttendanceInputItem]
 
 
 class AttendanceUpdate(BaseModel):
@@ -258,13 +290,18 @@ class AttendanceUpdate(BaseModel):
     group_id: Optional[int] = None
     subject_id: Optional[int] = None
     attendance_date: Optional[date] = None
-    status: AttendanceEnum = AttendanceEnum.ABSENT
+    status: Optional[AttendanceEnum] = None
 
 
 class AttendancesOutput(BaseModel):
     id: int
+    student: StudentAttendance
     attendance_date: date
     group: GroupOutput
+
+    class Config:
+        from_attributes = True
+
 
 class AttendanceDetail(BaseModel):
     id: int
@@ -273,9 +310,107 @@ class AttendanceDetail(BaseModel):
     teacher: TeacherOutput
     student: StudentGroupInfo
     group: GroupOutput
-    subject: SubjectCreate
+    subject: SubjectOutput
     created_at: datetime
     updated_at: datetime
+
+
+# Admin Pydantic Model
+
+class AdminCreate(BaseModel):
+    admin_firstname: str
+    admin_lastname: str
+    admin_phone_number: str
+    admin_email: Optional[str]
+    admin_additional_info: str
+
+
+class AdminOutput(BaseModel):
+    id: int
+    admin_firstname: str
+    admin_lastname: str
+
+    class Config:
+        from_attributes = True
+
+
+class AdminDetail(BaseModel):
+    id: int
+    admin_firstname: str
+    admin_lastname: str
+    admin_phone_number: str
+    admin_email: Optional[str]
+    admin_additional_info: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class AdminUpdate(BaseModel):
+    admin_firstname: Optional[str] = None
+    admin_lastname: Optional[str] = None
+    admin_phone_number: Optional[str] = None
+    admin_email: Optional[str] = None
+    admin_additional_info: Optional[str] = None
+
+
+# User Pydantic Model
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    user_email: Optional[str]
+    role: RoleEnum
+    teacher_id: Optional[int] = None
+    admin_id: Optional[int] = None
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+class UserLoginResponse(BaseModel):
+    id: Optional[int] = None
+    username: Optional[str] = None
+    role: Optional[RoleEnum] = None
+    access_token: Optional[str] = None
+    data: Optional[Union[AdminDetail, TeacherDetail]] = None
+
+class UserOutput(BaseModel):
+    id : int
+    username: str
+    role: str
+    user_email: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class UserDetail(BaseModel):
+    username: str
+    user_email: Optional[str]
+    role: str
+    teacher: Optional[TeacherOutput] = None
+    admin: Optional[AdminOutput] = None
+
+    class Config:
+        from_attributes = True
+
+class UserUpdate(BaseModel):
+    username: Optional[str] = None
+    user_email: Optional[str] = None
+    role: Optional[str] = None
+    teacher_id: Optional[int] = None
+    admin_id: Optional[int] = None
+
+
+# Token pydantic model
+class TokenRefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class Token(BaseModel):
+    access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
+    token_type: Optional[str] = None
 
 
 TeacherDetail.update_forward_refs()

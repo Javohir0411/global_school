@@ -1,5 +1,4 @@
-from http.client import HTTPException
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from app.db.session import get_db
@@ -14,7 +13,7 @@ from app.db.schemas import AttendanceCreate, AttendanceDetail, AttendanceBase, A
 
 attendance_router = APIRouter()
 
-@attendance_router.post("/attendances")
+@attendance_router.post("/attendances", response_model=dict)
 def add_attendance(data: AttendanceCreate, db: Session = Depends(get_db)):
     return create_attendance(db, data)
 
@@ -23,8 +22,11 @@ def read_attendances(db: Session = Depends(get_db)):
     return get_attendances(db)
 
 @attendance_router.get("/attendances/{attendance_id}", response_model=AttendanceDetail)
-def read_attendances(attendance_id: int, db: Session = Depends(get_db)):
-    return get_attendance(db, attendance_id)
+def read_attendance(attendance_id: int, db: Session = Depends(get_db)):
+    attendance = get_attendance(db, attendance_id)
+    if not attendance:
+        raise HTTPException(status_code=404, detail="Attendance not found")
+    return attendance
 
 @attendance_router.put("/attendances/{attendance_id}")
 def modify_attendance(data: AttendanceUpdate, attendance_id: int, db: Session = Depends(get_db)):

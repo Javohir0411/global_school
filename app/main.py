@@ -5,6 +5,9 @@ from app.api.v1.routers_groups import groups_router as group
 from app.api.v1.routers_attendance import attendance_router as attendance
 from app.api.v1.routers_payments import payment_router as payment
 from app.api.v1.routers_subjects import subject_router as subject
+from app.api.v1.router_admins import admin_router as admin
+from app.api.v1.router_user import user_router as user
+from app.api.v1.router_authentication import authentication_router as registration
 app = FastAPI(title="My Project API", version="1.0")
 
 routers = [
@@ -13,7 +16,10 @@ routers = [
     (teacher, "Teachers"),
     (student, "Students"),
     (attendance, "Attendance"),
-    (payment, "Payment")
+    (payment, "Payment"),
+    (admin, "Admin"),
+    (user, "User"),
+    (registration, "Registration")
 ]
 
 for router, tag in routers:

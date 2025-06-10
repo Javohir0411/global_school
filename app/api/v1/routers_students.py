@@ -10,7 +10,7 @@ from app.db.crud import (
     get_student,
     get_students,
     update_student,
-    delete_student
+    delete_student, delete_teacher_from_student, delete_group_from_student
 )
 
 student_router = APIRouter()
@@ -40,3 +40,11 @@ def modify_student(student_id: int, data_update: StudentUpdate, db: Session = De
 @student_router.delete("/students/{student_id}")
 def remove_student(student_id: int, db: Session = Depends(get_db)):
     return delete_student(db, student_id)
+
+@student_router.delete("students/{student_id/teachers/{teacher_id}")
+def remove_teacher_from_student(student_id: int, teacher_id: int, db: Session = Depends(get_db)):
+    return delete_teacher_from_student(student_id, teacher_id, db)
+
+@student_router.delete("/students/{student_id}/groups/{group_id}")
+def remove_group_from_student(student_id: int, group_id: int, db: Session = Depends(get_db)):
+    return delete_group_from_student(student_id, group_id, db)

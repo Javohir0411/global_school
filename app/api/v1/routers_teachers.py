@@ -8,29 +8,45 @@ from app.db.crud import (
     get_teachers,
     get_teacher,
     update_teacher,
-    delete_teacher
+    delete_teacher, delete_group_from_teacher, delete_student_from_teacher
 )
 from app.db.schemas import TeacherBase, TeacherDetail, TeacherCreate, TeacherUpdate, TeacherOutput
 
 teacher_router = APIRouter()
+
+
 # Teacher modeli uchun router
 
 @teacher_router.post("/teachers")
 def add_teacher(teacher: TeacherCreate, db: Session = Depends(get_db)):
     return create_teachers(db, teacher)
 
+
 @teacher_router.get("/teachers", response_model=List[TeacherOutput])
 def read_teachers(db: Session = Depends(get_db)):
     return get_teachers(db)
 
-@teacher_router.get("/teachers/{teacher_id}", response_model = TeacherDetail)
+
+@teacher_router.get("/teachers/{teacher_id}", response_model=TeacherDetail)
 def read_teacher(teacher_id: int, db: Session = Depends(get_db)):
     return get_teacher(db, teacher_id)
+
 
 @teacher_router.put("/teachers/{teacher_id}")
 def modify_teacher(teacher_id: int, data_update: TeacherUpdate, db: Session = Depends(get_db)):
     return update_teacher(db, teacher_id, data_update)
 
+
 @teacher_router.delete("/teachers/{teacher_id}")
 def remove_teacher(teacher_id: int, db: Session = Depends(get_db)):
     return delete_teacher(db, teacher_id)
+
+
+@teacher_router.delete("/teachers/{teacher_id}/groups/{group_id}")
+def remove_group_from_teacher(teacher_id: int, group_id: int, db: Session = Depends(get_db)):
+    return delete_group_from_teacher(teacher_id, group_id, db)
+
+
+@teacher_router.delete("/teachers/{teacher_id}/students/{student_id}")
+def remove_student_from_teacher(teacher_id: int, student_id: int, db: Session = Depends(get_db)):
+    return delete_student_from_teacher(teacher_id, student_id, db)

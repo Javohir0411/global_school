@@ -1,4 +1,5 @@
 from fastapi import HTTPException
+from app.core.security import hash_password
 
 from app.db.models import (
     Teachers,
@@ -6,12 +7,15 @@ from app.db.models import (
     Subjects,
     Groups,
     Payments,
-    Attendance
+    Attendance,
+    Admins,
+    User
 )
 from app.db.schemas import (
     TeacherBase,
     TeacherCreate,
     TeacherDetail,
+    TeacherUpdate,
 
     SubjectBase,
     SubjectDetail,
@@ -20,6 +24,7 @@ from app.db.schemas import (
     StudentBase,
     StudentDetail,
     StudentCreate,
+    StudentUpdate,
 
     GroupBase,
     GroupDetail,
@@ -27,12 +32,26 @@ from app.db.schemas import (
     AttendanceBase,
     AttendanceDetail,
     AttendanceCreate,
+    AttendanceUpdate,
 
     PaymentDetail,
     PaymentCreate,
-    PaymentBase, PaymentUpdate, GroupUpdate, GroupCreate, TeacherUpdate, StudentUpdate, AttendanceUpdate
+    PaymentBase,
+    PaymentUpdate,
+
+    GroupUpdate,
+    GroupCreate,
+    TeacherUnassignRequest,
+
+    AdminCreate,
+    AdminOutput,
+    AdminDetail,
+    AdminUpdate,
+
+    UserCreate,
+    UserUpdate
 )
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from sqlalchemy.orm import Session, joinedload
 from typing import List
 import logging
@@ -123,6 +142,40 @@ def delete_teacher(db: Session, teacher_id: int):
     return teacher
 
 
+def delete_group_from_teacher(teacher_id: int, group_id: int, db: Session):
+    teacher = db.query(Teachers).filter(Teachers.id == teacher_id).first()
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher topilmadi !")
+
+    group = db.query(Groups).filter(Groups.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group topilmadi !")
+
+    if group not in teacher.teacher_groups:
+        raise HTTPException(status_code=400, detail="Group Teacher-ga bog'lanmagan !")
+
+    teacher.teacher_groups.remove(group)
+    db.commit()
+    return {"detail": f"Group {group_id} Teacher {teacher_id} da muvaffaqiyatli uzildi !"}
+
+
+def delete_student_from_teacher(teacher_id: int, student_id: int, db: Session):
+    teacher = db.query(Teachers).filter(Teachers.id == teacher_id).first()
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher topilmadi !")
+
+    student = db.query(Students).filter(Students.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student topilmadi !")
+
+    if student not in teacher.teacher_students:
+        raise HTTPException(status_code=400, detail="Student Teacher-ga bog'lanmagan !")
+
+    teacher.teacher_students.remove(student)
+    db.commit()
+    return {"detail": f"Student {student_id} Teacher {teacher_id} da muvaffaqiyatli uzildi !"}
+
+
 # ------------------- Student CRUD -----------------------
 
 def create_student(db: Session, data: StudentCreate):
@@ -173,7 +226,10 @@ def update_student(db: Session, student_id: int, data_update: StudentUpdate):
             student.student_groups = groups
         elif key == "student_teachers":
             teachers = db.query(Teachers).filter(Teachers.id.in_(value)).all()
-            student.student_teachers = teachers
+            # Avvalgi o'qituvchilarni o'chirish (munosabatni tozalash)
+            student.student_teachers.clear()
+            # Keyin yangi o'qituvchilarni qo'shish
+            student.student_teachers.extend(teachers)
         else:
             setattr(student, key, value)
 
@@ -187,6 +243,41 @@ def delete_student(db: Session, student_id: int):
     db.delete(student)
     db.commit()
     return student
+
+
+def delete_teacher_from_student(student_id: int, teacher_id: int, db: Session):
+    student = db.query(Students).filter(Students.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found !")
+
+    teacher = db.query(Teachers).filter(Teachers.id == teacher_id).first()
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher not found !")
+
+    if teacher not in student.student_teachers:
+        raise HTTPException(status_code=404, detail="This teacher is not assigned to the student !")
+
+    student.student_teachers.remove(teacher)
+    db.commit()
+    return {"detail": f"Teacher {teacher_id} has been unassigned from student {student_id}"}
+
+
+def delete_group_from_student(student_id: int, group_id: int, db=Session):
+    student = db.query(Students).filter(Students.id == student_id).first()
+
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found !")
+
+    group = db.query(Groups).filter(Groups.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found !")
+
+    if group not in student.student_groups:
+        raise HTTPException(status_code=400, detail="Group not linked to this student")
+
+    student.student_groups.remove(group)
+    db.commit()
+    return {"detail": f"Group {group_id} has been unassigned from student {student_id}"}
 
 
 # ------------------- Group CRUD -----------------------
@@ -296,60 +387,67 @@ def delete_payment(db: Session, payment_id: int):
 # ------------------- Attendance CRUD -----------------------
 
 def create_attendance(db: Session, data: AttendanceCreate):
+    today = date.today()
 
-    # Studentni va u student guruhga biriktirilganligini tekshirish!
-    student = db.query(Students).filter(Students.id == data.student_id).first()
-    if not student:
-        raise HTTPException(status_code=404, detail="Bunday student mavjud emas")
+    teacher = db.query(Teachers).filter(Teachers.id == data.teacher_id).first()
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher not found !")
 
     group = db.query(Groups).filter(Groups.id == data.group_id).first()
     if not group:
-        raise HTTPException(status_code=404, detail="Bunday guruh mavjud emas !")
-
-    if group not in student.student_groups:
-        raise HTTPException(
-            status_code=404,
-            detail="Student bu guruhga biriktirilmagan !"
-        )
-
-    #Teacher va guruhni tekshirish!
-    teacher = db.query(Teachers).filter(Teachers.id == data.teacher_id).first()
-    if not teacher:
-        raise HTTPException(
-            status_code=404,
-            detail="Bunday teacher mavjud emas!",
-        )
+        raise HTTPException(status_code=404, detail="Group not found !")
 
     if group not in teacher.teacher_groups:
-        raise HTTPException(
-            status_code=404,
-            detail="Teacher bu guruhga biriktirilmagan!"
-        )
+        raise HTTPException(status_code=404, detail="Group has not been assigned to this teacher !")
 
-    subject = db.query(Subjects).filter(Subjects.id == data.subject_id).first()
+    subject = db.query(Subjects).filter(Subjects.id == group.group_subject_id).first()
     if not subject:
-        raise HTTPException(
-            status_code=404,
-            detail="Bunday subject topilmadi!"
-        )
-
-    if group.group_subject_id != subject.id:
-        raise HTTPException(
-            status_code=404,
-            detail="Subject bu guruhga biriktirilmagan"
-        )
+        raise HTTPException(status_code=404, detail="Subject not found !")
 
     if teacher.teacher_subject_id != subject.id:
-        raise HTTPException(
-            status_code=404,
-            detail="Subject bu o'qituvchiga biriktirilmagan!"
-        )
+        raise HTTPException(status_code=404, detail="Subject has not been assigned to this teacher !")
 
-    attendance = Attendance(**data.model_dump())
-    db.add(attendance)
+    result = []
+    for item in data.attendance:
+        student = db.query(Students).filter(Students.id == item.student_id).first()
+        if not student:
+            continue
+
+        if group not in student.student_groups:
+            raise HTTPException(status_code=404, detail="Student has not been assigned to this group")
+
+        existing = db.query(Attendance).filter_by(
+            student_id=item.student_id,
+            group_id=data.group_id,
+            attendance_date=today
+        ).first()
+
+        if existing:
+            raise HTTPException(status_code=400, detail="Attendance has been confirmed for this date!")
+
+        attendance = Attendance(
+            teacher_id=data.teacher_id,
+            student_id=item.student_id,
+            group_id=data.group_id,
+            subject_id=subject.id,
+            attendance_date=today,
+            status=item.status.value
+        )
+        db.add(attendance)
+        result.append({
+            "student": f"{student.student_firstname} {student.student_lastname}",
+            "status": f"{item.status.value}"
+        })
     db.commit()
-    db.refresh(attendance)
-    return attendance
+    return {
+        "teacher": f"{teacher.teacher_firstname} {teacher.teacher_lastname}",
+        "group": group.group_name,
+        "group_subject": subject.subject_name,
+        "lesson_date": today.strftime("%d-%m-%Y"),
+        "lesson_days": "-".join(group.lesson_days),
+        "lesson_time": group.lesson_time,
+        "attendance": result
+    }
 
 
 def get_attendances(db: Session):
@@ -436,3 +534,152 @@ def delete_subject(db: Session, subject_id: int):
     db.delete(subject)
     db.commit()
     return subject
+
+
+# ------------------- Admin CRUD -----------------------
+
+def create_admin(db: Session, data: AdminCreate):
+    admin = Admins(**data.model_dump())
+    db.add(admin)
+    db.commit()
+    db.refresh(admin)
+    return admin
+
+
+def get_admins(db: Session):
+    return db.query(Admins).options(
+        joinedload(Admins.admin_account),
+    ).all()
+
+
+def get_admin(db: Session, admin_id: int):
+    admin = db.query(Admins).options(
+        joinedload(Admins.admin_account)
+    ).filter(Admins.id == admin_id).first()
+
+    if not admin:
+        raise HTTPException(status_code=404, detail=f"Admin id = {admin_id} not found !")
+
+    return admin
+
+def update_admin(db: Session, admin_id: int, data_update: AdminUpdate):
+    admin = db.query(Admins).filter(Admins.id == admin_id).first()
+    if not admin:
+        raise HTTPException(status_code=404, detail="Admin not found !")
+
+    updated_data = data_update.dict(exclude_unset=True)
+
+    for key, value in updated_data.items():
+        setattr(admin, key, value)
+
+    db.commit()
+    db.refresh(admin)
+    return admin
+
+
+def delete_admin(db: Session, admin_id: int):
+    admin = db.query(Admins).filter(Admins.id == admin_id).first()
+    db.delete(admin)
+    db.commit()
+    return admin
+
+
+# ------------------- User CRUD -----------------------
+
+def create_user(db: Session, data: UserCreate):
+    # 1. Password-ni hash qilamiz
+    hashed_password = hash_password(data.password)
+
+    # 2. Data modeldan password-ni chiqarib tashlaymiz, chunki uni alohida qo'shmoqchimiz
+    user_data = data.model_dump(exclude={"password"})
+
+    # 3. User modeliga hashed_password ni qo'shamiz
+    user = User(**user_data, password=hashed_password)
+
+    # 4. Bazaga yozamiz
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "id": user.id,
+        "role": user.role,
+        "username": user.username,
+        "teacher_id": user.teacher_id,
+        "admin_id": user.admin_id
+    }
+
+def get_users(db: Session):
+    return db.query(User).options(
+        joinedload(User.teacher),
+        joinedload(User.admin)
+    ).all()
+
+
+def get_user(db: Session, user_id: int):
+    user = db.query(User).options(
+        joinedload(User.teacher),
+        joinedload(User.admin)
+    ).filter(User.id == user_id).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found !")
+
+    return user
+
+def update_user(db: Session, user_id: int, data_update: UserUpdate):
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found !")
+
+    updated_data = data_update.dict(exclude_unset=True)
+
+    for key, value in updated_data.items():
+        setattr(user, key, value)
+
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def delete_user(db: Session, user_id: int):
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found !")
+
+    db.delete(user)
+    db.commit()
+    return user
+
+
+# ------------------- Save Refresh Token -----------------------
+
+def save_refresh_token(db, user_id: int, refresh_token: str):
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        logger.info(f"User id = {user_id} topilmadi !")
+        raise HTTPException(status_code=404, detail=f"{user_id} id raqamiga ega foydalanuvchi topilmadi !")
+
+    logger.info(f"{user_id} id raqamiga ega foydalanuvchi topildi, token yaratilmoqda...")
+    user.refresh_token = refresh_token
+    db.commit()
+    db.refresh(user)
+    logger.info(f"Refresh token bazaga saqlandi, refresh token: {user.refresh_token}")
+    return user
+
+
+"""
+***chornavik***
+
+username va password
+
+user = username boyicha qidiruv va username == username ->
+-> user_id = user.id
+
+user = User.id == user_id
+if user:
+    user.refresh_token = refresh_token
+"""

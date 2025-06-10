@@ -9,11 +9,12 @@ from sqlalchemy import (Column,
                         Date,
                         DateTime,
                         func,
-                        Enum)
-from sqlalchemy.dialects.postgresql import ARRAY
+                        Enum,
+                        CheckConstraint)
+from sqlalchemy.dialects.postgresql import ENUM, ARRAY
 from sqlalchemy.orm import relationship
 from app.db.base import Base
-from app.enums import AttendanceEnum
+from app.enums import AttendanceEnum, RoleEnum
 
 teacher_group_association = Table(
     "teacher_group_association",
@@ -43,7 +44,8 @@ class Teachers(Base):
     id = Column(Integer, primary_key=True)
     teacher_firstname = Column(String, nullable=False)
     teacher_lastname = Column(String, nullable=False)
-    teacher_phone_number = Column(String, nullable=False)
+    teacher_phone_number = Column(String, nullable=False, unique=True)
+    teacher_email = Column(String, unique=True, index=True, nullable=True)
 
     teacher_subject_id = Column(Integer, ForeignKey("subjects.id"), nullable=True)
     teacher_subject = relationship("Subjects", back_populates="subject_teacher")
@@ -53,6 +55,8 @@ class Teachers(Base):
                                   back_populates="group_teachers")  # Ustoz uchun biriktirilgan guruhlar
     teacher_students = relationship("Students", secondary=teacher_students_association,
                                     back_populates="student_teachers")  # Ustoz uchun biriktirilgan studentlar
+
+    teacher_account = relationship("User", back_populates="teacher", uselist=False)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())  # Avtomatik kiritish vaqtini saqlash
     updated_at = Column(DateTime(timezone=True), server_default=func.now(),
@@ -65,7 +69,7 @@ class Students(Base):
     id = Column(Integer, primary_key=True)
     student_firstname = Column(String, nullable=False)
     student_lastname = Column(String, nullable=False)
-    student_phone_number = Column(String, nullable=False)
+    student_phone_number = Column(String, nullable=False, unique=True)
     student_parents_fullname = Column(String, nullable=False)
     student_parents_phone_number = Column(String, nullable=False)
     student_additional_info = Column(Text)
@@ -73,7 +77,8 @@ class Students(Base):
     student_groups = relationship("Groups", secondary=student_group_association, back_populates="group_students")
     student_attendance = relationship("Attendance", back_populates="student", passive_deletes=True)
     student_payment = relationship("Payments", back_populates="student", passive_deletes=True)
-    student_teachers = relationship("Teachers", secondary=teacher_students_association, back_populates="teacher_students")
+    student_teachers = relationship("Teachers", secondary=teacher_students_association,
+                                    back_populates="teacher_students")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())  # Avtomatik kiritish vaqtini saqlash
     updated_at = Column(DateTime(timezone=True), server_default=func.now(),
@@ -136,7 +141,11 @@ class Attendance(Base):
     subject = relationship("Subjects", back_populates="attendance")
 
     attendance_date = Column(Date)
-    status = Column(Enum(AttendanceEnum), default=AttendanceEnum.ABSENT.value)
+    status = Column(
+        ENUM(AttendanceEnum, name="attendanceenum", create_type=True),
+        nullable=False,
+        default=AttendanceEnum.absent.value
+    )
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())  # Avtomatik kiritish vaqtini saqlash
     updated_at = Column(DateTime(timezone=True), server_default=func.now(),
@@ -156,3 +165,44 @@ class Subjects(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())  # Avtomatik kiritish vaqtini saqlash
     updated_at = Column(DateTime(timezone=True), server_default=func.now(),
                         onupdate=func.now())  # Yangilangan vaqtini avtomatik saqlash
+
+
+class Admins(Base):
+    __tablename__ = "admins"
+    id = Column(Integer, primary_key=True)
+    admin_firstname = Column(String, nullable=False)
+    admin_lastname = Column(String, nullable=False)
+    admin_phone_number = Column(String, nullable=False)
+    admin_email = Column(String, unique=True, index=True, nullable=True)
+    admin_additional_info = Column(Text, nullable=True)
+
+    admin_account = relationship("User", back_populates="admin", uselist=False)
+
+
+class User(Base):
+    __tablename__ = "user"
+
+    id = Column(Integer, primary_key=True)
+    username = Column(String, nullable=False, unique=True)
+    password = Column(String, nullable=False)
+    user_email = Column(String, unique=True, index=True, nullable=True)
+    role = Column(
+        ENUM(RoleEnum, name="rollenum", create_type=True),
+        nullable=False
+    )
+    refresh_token = Column(String, nullable=True)
+
+    teacher_id = Column(Integer, ForeignKey("teachers.id"), nullable=True)
+    teacher = relationship("Teachers", back_populates="teacher_account")
+
+    admin_id = Column(Integer, ForeignKey("admins.id"), nullable=True)
+    admin = relationship("Admins", back_populates="admin_account")
+
+
+
+    __table_args__ = (
+        CheckConstraint(
+            "(teacher_id IS NOT NULL) OR (admin_id IS NOT NULL)",
+            name="user_has_role"
+        ),
+    )
